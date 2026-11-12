@@ -58,6 +58,14 @@ main[inert]{opacity:.55}
 #dayGuide{font-size:14px;border-left:3px solid var(--line);padding:2px 0 2px 10px;color:var(--muted)}
 #dayGuide.strong{border-left-color:var(--rest);color:var(--ink);font-weight:700}
 .seg button.suggest{border-color:var(--rest);border-style:dashed}
+.visit{min-height:44px;border-radius:12px;border:1.5px solid var(--line);background:transparent;font-weight:700}
+.visit[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cell u{position:absolute;top:4px;left:4px;width:7px;height:7px;border-radius:2px;background:var(--accent)}
+.legend .sq{display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--accent);margin-right:4px}
+#visitList{display:flex;flex-direction:column;gap:6px}
+.vrow{display:flex;gap:10px;align-items:baseline;text-align:left;border:0;border-radius:10px;background:var(--bg);padding:10px 12px;min-width:0}
+.vrow b{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.vrow span{color:var(--muted);font-size:13px;min-width:0;overflow-wrap:anywhere}
 .link{background:none;border:0;padding:4px 0;color:var(--accent);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .seg button{min-height:52px;border-radius:12px;border:1.5px solid var(--line);background:transparent;font-weight:700;font-size:15px;padding:6px 4px}
@@ -158,6 +166,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
       <label class="field"><span class="label">メモ</span>
         <input type="text" id="memo" maxlength="200" placeholder="体調や気づいたこと" autocomplete="off">
       </label>
+      <button type="button" class="visit" id="visitBtn" aria-pressed="false">この日に受診した</button>
     </section>
 
     <section class="card" aria-labelledby="sheetH">
@@ -181,7 +190,15 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
         <span><b style="color:var(--warn)">×</b> 飲まなかった</span>
         <span><b style="color:var(--rest)">休</b> 休薬</span>
         <span><span class="dot"></span>出血（大きいほど多い）</span>
+        <span><span class="sq"></span>受診</span>
       </div>
+    </section>
+
+    <section class="card" aria-labelledby="visitH">
+      <div class="row"><h2 id="visitH">受診</h2><span class="sub" id="visitLast"></span></div>
+      <label class="field"><span class="label">次回の受診予定</span><input type="date" id="nextVisit"></label>
+      <div class="sub" id="nextInfo"></div>
+      <div class="field"><span class="label">これまでの受診</span><div id="visitList"></div></div>
     </section>
 
     <details class="card" id="settings">
@@ -396,7 +413,19 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   }
 
   // ---------- render ----------
-  function renderAll(){ memo=null; renderDay(); renderSheet(); renderMonth(); }
+  function renderAll(){ memo=null; renderDay(); renderSheet(); renderMonth(); renderVisits(); }
+  function esc(x){ return String(x).replace(/[&<>"']/g, function(ch){ return "&#"+ch.charCodeAt(0)+";"; }); }
+  function renderVisits(){
+    var t=today(), list=[];
+    Object.keys(state.months).forEach(function(ym){ var m=state.months[ym]; Object.keys(m).forEach(function(k){ if(m[k] && m[k].v) list.push(ym+"-"+pad(+k)); }); });
+    list.sort().reverse();
+    var nv=state.settings.nextVisit, n=nv?diff(t,nv):0;
+    $("nextInfo").textContent = !nv ? "" : n>0 ? "あと"+n+"日（"+jp(nv)+"）" : n===0 ? "今日が受診予定日です" : "予定日（"+jp(nv)+"）を過ぎています";
+    $("visitLast").textContent = list.length ? "前回の受診から"+diff(list[0],t)+"日" : "";
+    $("visitList").innerHTML = list.length
+      ? list.slice(0,8).map(function(d){ return '<button type="button" class="vrow" data-d="'+d+'"><b>'+jp(d)+'</b><span>'+esc(getRec(d).memo||"")+'</span></button>'; }).join("")
+      : '<span class="sub">まだ記録がありません。受診した日を開いて「この日に受診した」を押すと、ここに並びます。</span>';
+  }
 
   function renderDay(){
     var ds=cur(), t=today(), r=getRec(ds), c=cyc(ds), s=state.settings;
@@ -417,6 +446,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
     st.textContent=msg; st.className=warn?"warn":"";
     Array.prototype.forEach.call($("pillBtns").children, function(b){ b.setAttribute("aria-pressed", String(b.dataset.p===r.p)); b.classList.toggle("suggest", !!(g && g.suggest && !r.p && b.dataset.p==="b")); });
     Array.prototype.forEach.call($("bleedBtns").children, function(b){ b.setAttribute("aria-pressed", String(r.bl!==undefined && +b.dataset.bl===r.bl)); });
+    $("visitBtn").setAttribute("aria-pressed", String(!!r.v));
     var memo=$("memo");
     if(document.activeElement!==memo) memo.value=r.memo||"";
   }
@@ -457,7 +487,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
     for(var d=1;d<=n;d++){
       var s=viewYM+"-"+pad(d), r=getRec(s), cls="cell";
       if(s===t) cls+=" today"; if(s===ds && s!==t) cls+=" sel";
-      html+='<button type="button" class="'+cls+'" data-d="'+s+'" aria-label="'+jp(s)+'"'+(s>t?" disabled":"")+'><b>'+d+'</b><span class="'+(r.p||"")+'">'+glyph(r.p)+'</span>'+bleedDot(r)+'</button>';
+      html+='<button type="button" class="'+cls+'" data-d="'+s+'" aria-label="'+jp(s)+'"'+(s>t?" disabled":"")+'><b>'+d+'</b><span class="'+(r.p||"")+'">'+glyph(r.p)+'</span>'+bleedDot(r)+(r.v?'<u></u>':'')+'</button>';
     }
     $("month").innerHTML=html;
     $("nextM").disabled = viewYM>=t.slice(0,7);
@@ -467,6 +497,8 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
     var s=state.settings, a=document.activeElement;
     if(a!==$("sTime")) $("sTime").value=s.time;
     if(a!==$("sStart")) $("sStart").value=s.start;
+    if(a!==$("nextVisit")) $("nextVisit").value=s.nextVisit||"";
+    $("nextVisit").min=today();
     $("sStart").max=today();
     $("sPreset").value=s.preset;
     $("customRow").hidden = s.preset!=="custom";
@@ -499,9 +531,17 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   });
   $("memo").addEventListener("change", function(){ if(ready) setRec(cur(),{memo:this.value.trim()}); });
   $("toToday").addEventListener("click", function(){ pick(today()); });
+  $("visitBtn").addEventListener("click", function(){
+    if(!ready) return;
+    var ds=cur(), on=!getRec(ds).v, nv=state.settings.nextVisit;
+    if(on && nv && nv<=ds){ state.settings.nextVisit=""; hasSettings=true; persist("settings"); fillSettings(); }
+    setRec(ds,{v:on?true:undefined});
+  });
+  $("nextVisit").addEventListener("change", function(){ if(this.value==="" || /^\d{4}-\d\d-\d\d$/.test(this.value)){ state.settings.nextVisit=this.value; saveSettings(); } });
   function gridClick(e){ var b=e.target.closest("button[data-d]"); if(!b) return; pick(b.dataset.d); window.scrollTo({top:0,behavior:"smooth"}); }
   $("sheet").addEventListener("click", gridClick);
   $("month").addEventListener("click", gridClick);
+  $("visitList").addEventListener("click", gridClick);
   function shiftM(n){ var p=viewYM.split("-"), d=new Date(+p[0], +p[1]-1+n, 1); viewYM=d.getFullYear()+"-"+pad(d.getMonth()+1); renderMonth(); }
   $("prevM").addEventListener("click", function(){ shiftM(-1); });
   $("nextM").addEventListener("click", function(){ shiftM(1); });
