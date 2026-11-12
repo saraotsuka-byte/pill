@@ -52,6 +52,9 @@ main[inert]{opacity:.55}
 #dayDate{font-family:var(--display);font-size:20px;font-weight:700}
 #dayStatus{font-weight:500}
 #dayStatus.warn{color:var(--warn);font-weight:700}
+#dayGuide{font-size:14px;border-left:3px solid var(--line);padding:2px 0 2px 10px;color:var(--muted)}
+#dayGuide.strong{border-left-color:var(--rest);color:var(--ink);font-weight:700}
+.seg button.suggest{border-color:var(--rest);border-style:dashed}
 .link{background:none;border:0;padding:4px 0;color:var(--accent);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .seg button{min-height:52px;border-radius:12px;border:1.5px solid var(--line);background:transparent;font-weight:700;font-size:15px;padding:6px 4px}
@@ -133,6 +136,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
         <button class="link" id="toToday" type="button" hidden>今日に戻る</button>
       </div>
       <div id="dayStatus"></div>
+      <div id="dayGuide" hidden></div>
       <div class="seg" id="pillBtns" role="group" aria-label="服用の記録">
         <button type="button" data-p="t" aria-pressed="false">飲んだ</button>
         <button type="button" data-p="m" aria-pressed="false">飲まなかった</button>
@@ -146,6 +150,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
           <button type="button" data-bl="2" aria-pressed="false">ふつう</button>
           <button type="button" data-bl="3" aria-pressed="false">多い</button>
         </div>
+        <span class="note" id="bleedHint" hidden>「なし」も含めて毎日記録すると、休薬のタイミングを知らせます。点状出血は「少量」で記録してください。</span>
       </div>
       <label class="field"><span class="label">メモ</span>
         <input type="text" id="memo" maxlength="200" placeholder="体調や気づいたこと" autocomplete="off">
@@ -155,7 +160,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
     <section class="card" aria-labelledby="sheetH">
       <div class="row"><h2 id="sheetH">シート</h2><span class="sub" id="sheetStats"></span></div>
       <div class="sheet" id="sheet"></div>
-      <p class="note">丸をタップするとその日の記録を開きます。飲んだ錠剤はシートから抜けた表示になります。</p>
+      <p class="note" id="sheetNote"></p>
     </section>
 
     <section class="card" aria-labelledby="monthTitle">
@@ -182,6 +187,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
         <label class="field"><span class="label">飲む時刻</span><input type="time" id="sTime"></label>
         <label class="field"><span class="label">ピルの種類</span>
           <select id="sPreset">
+            <option value="flex">出血が続くまで連続服用（ヤーズフレックス）</option>
             <option value="21-7">21錠 ＋ 7日休薬</option>
             <option value="21-7p">28錠（実薬21 ＋ 偽薬7）</option>
             <option value="24-4">28錠（実薬24 ＋ 偽薬4）</option>
@@ -192,8 +198,8 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
           <label class="field"><span class="label">実薬の日数</span><input type="number" id="sActive" min="1" max="365" inputmode="numeric"></label>
           <label class="field"><span class="label">休薬の日数</span><input type="number" id="sRest" min="0" max="14" inputmode="numeric"></label>
         </div>
-        <label class="field"><span class="label">いまのシートを始めた日</span><input type="date" id="sStart"></label>
-        <button type="button" class="btn ghost" id="newSheet">今日から新しいシートを始める</button>
+        <label class="field"><span class="label">いまの周期（シート）を飲み始めた日</span><input type="date" id="sStart"></label>
+        <button type="button" class="btn ghost" id="newSheet">今日を1日目にして数え直す</button>
 
         <div class="how">
           <h2>バックアップ</h2>
@@ -243,7 +249,7 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   function jp(s){ var d=parse(s); return (d.getMonth()+1)+"月"+d.getDate()+"日（"+WD[d.getDay()]+"）"; }
 
   // ---------- state ----------
-  var state = { settings:{ time:"21:00", start:today(), active:21, rest:7, preset:"21-7" }, months:{} };
+  var state = { settings:{ time:"21:00", start:today(), active:21, rest:7, preset:"flex" }, months:{} };
   var hasSettings = false, ready = false, mode = "loading";
   var sel = null;                       // null = follow today
   var viewYM = today().slice(0,7);
@@ -261,11 +267,50 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
     persist("m-"+ym);
     renderAll();
   }
+  // Flexible regimen: take through day 24 whatever happens; from day 25, three bleeding days in a row
+  // (or reaching day 120) lead to a 4-day break. Cycles are derived from the records, not from a fixed length.
+  var FLEX={min:24, bleed:3, max:120, rest:4}, memo=null;
+  function isFlex(){ return state.settings.preset==="flex"; }
+  function flexCycles(){
+    if(memo) return memo;
+    var t=today(), first=state.settings.start, out=[], guard=0;
+    while(first<=t && guard++<400){
+      var bs=null;
+      for(var n=0;;n++){
+        var d=addDays(first,n);
+        if(n>=FLEX.max){ bs=d; break; }
+        if(d>t) break;
+        if(getRec(d).p==="b"){ bs=d; break; }
+      }
+      out.push({first:first, bs:bs});
+      if(!bs) break;
+      first=addDays(bs,FLEX.rest);
+    }
+    return (memo=out);
+  }
   function cyc(ds){
     var s=state.settings, n=diff(s.start, ds);
     if(n<0) return null;
-    var L=s.active+s.rest, i=n%L;
-    return { i:i, rest:i>=s.active, first:addDays(ds,-i) };
+    if(!isFlex()){ var L=s.active+s.rest, i=n%L; return { i:i, rest:i>=s.active, first:addDays(ds,-i), active:s.active, restLen:s.rest }; }
+    var cs=flexCycles(), c=null;
+    for(var k=0;k<cs.length;k++){ if(cs[k].first<=ds) c=cs[k]; }
+    if(!c) return null;
+    var j=diff(c.first, ds), act=c.bs?diff(c.first,c.bs):null;
+    if(act!==null && j>=act+FLEX.rest) return null;
+    return { i:j, rest:act!==null && j>=act, first:c.first, active:act, restLen:FLEX.rest, flex:true, bs:c.bs };
+  }
+  function streak(ds,c){ var k=0, d=ds; while(d>=c.first && diff(c.first,d)>=FLEX.min && getRec(d).bl>0){ k++; d=addDays(d,-1); } return k; }
+  function guide(ds,c){
+    if(!c || !c.flex) return null;
+    if(c.rest) return { text:"休薬 "+(c.i-c.active+1)+"日目 / "+FLEX.rest+"日。"+jp(addDays(c.bs,FLEX.rest))+" から、出血が続いていても服用を再開します。" };
+    var n=c.i+1, k=streak(ds,c), ky=c.i>0?streak(addDays(ds,-1),c):0;
+    if(ky>=FLEX.bleed) return { text:"出血が"+ky+"日続いています。今日から"+FLEX.rest+"日間の休薬に入るタイミングです。", strong:true, suggest:true };
+    if(n>=FLEX.max) return { text:"連続"+FLEX.max+"日に達しました。明日から"+FLEX.rest+"日間休薬です。", strong:true };
+    if(k>=FLEX.bleed) return { text:"出血が"+k+"日続きました。明日から"+FLEX.rest+"日間休薬です。", strong:true };
+    if(n<FLEX.min) return { text:FLEX.min+"日目までは出血があっても飲み続けます（あと"+(FLEX.min-n)+"日）。" };
+    if(n===FLEX.min) return { text:"今日で"+FLEX.min+"日目です。明日以降、出血が"+FLEX.bleed+"日続いたら休薬に入ります。" };
+    if(k>0) return { text:"出血が"+k+"日続いています。あと"+(FLEX.bleed-k)+"日続いたら"+FLEX.rest+"日間休薬です。", strong:true };
+    return { text:"出血が"+FLEX.bleed+"日続くまで飲み続けます（最長"+FLEX.max+"日、あと"+(FLEX.max-n)+"日）。" };
   }
 
   // ---------- storage ----------
@@ -348,23 +393,26 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   }
 
   // ---------- render ----------
-  function renderAll(){ renderDay(); renderSheet(); renderMonth(); }
+  function renderAll(){ memo=null; renderDay(); renderSheet(); renderMonth(); }
 
   function renderDay(){
     var ds=cur(), t=today(), r=getRec(ds), c=cyc(ds), s=state.settings;
     $("dayDate").textContent=(ds===t?"今日 ":"")+jp(ds);
     $("toToday").hidden=(ds===t);
-    $("dayCycle").textContent = !c ? "シート開始日より前" : c.rest ? "休薬 "+(c.i-s.active+1)+"日目 / "+s.rest+"日" : "シート "+(c.i+1)+"日目 / 実薬"+s.active+"錠";
+    $("dayCycle").textContent = !c ? "開始日より前" : c.rest ? "休薬 "+(c.i-c.active+1)+"日目 / "+c.restLen+"日" : c.flex ? "連続 "+(c.i+1)+"日目" : "シート "+(c.i+1)+"日目 / 実薬"+s.active+"錠";
+    var g=guide(ds,c), ge=$("dayGuide");
+    ge.hidden=!g; ge.textContent=g?g.text:""; ge.className=(g&&g.strong)?"strong":"";
+    $("bleedHint").hidden=!isFlex();
     var st=$("dayStatus"), warn=false, msg;
     if(r.p==="t") msg="飲みました"+(r.at?"（"+r.at+"）":"");
     else if(r.p==="m") msg="飲みませんでした";
     else if(r.p==="b") msg="休薬日として記録しました";
-    else if(ds!==t) msg="記録がありません";
     else if(c && c.rest) msg="休薬期間です";
+    else if(ds!==t) msg="記録がありません";
     else if(nowHM()>=s.time){ msg=s.time+" を過ぎています。まだ記録がありません"; warn=true; }
     else msg=s.time+" に服用予定";
     st.textContent=msg; st.className=warn?"warn":"";
-    Array.prototype.forEach.call($("pillBtns").children, function(b){ b.setAttribute("aria-pressed", String(b.dataset.p===r.p)); });
+    Array.prototype.forEach.call($("pillBtns").children, function(b){ b.setAttribute("aria-pressed", String(b.dataset.p===r.p)); b.classList.toggle("suggest", !!(g && g.suggest && !r.p && b.dataset.p==="b")); });
     Array.prototype.forEach.call($("bleedBtns").children, function(b){ b.setAttribute("aria-pressed", String(r.bl!==undefined && +b.dataset.bl===r.bl)); });
     var memo=$("memo");
     if(document.activeElement!==memo) memo.value=r.memo||"";
@@ -376,11 +424,13 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   function renderSheet(){
     var s=state.settings, t=today(), ds=cur(), c=cyc(ds) || cyc(t), el=$("sheet");
     if(!c){ el.innerHTML='<span class="sub" style="grid-column:1/-1">シート開始日がまだ先です。設定で開始日を確認してください。</span>'; $("sheetStats").textContent=""; return; }
-    var L=s.active+s.rest, html="", taken=0, missed=0, bleed=0, startWd=parse(c.first).getDay();
+    var open=c.flex && c.active===null, dayNo=diff(c.first,t)+1;
+    var act=open ? Math.max(FLEX.min, dayNo) : c.active, L=act+(open?0:c.restLen);
+    var html="", taken=0, missed=0, bleed=0, startWd=parse(c.first).getDay();
     for(var w=0;w<7;w++) html+='<span class="wd">'+WD[(startWd+w)%7]+'</span>';
     for(var i=0;i<L;i++){
       var d=addDays(c.first,i), r=getRec(d), cls="slot";
-      if(i>=s.active) cls+=" rest";
+      if(i>=act) cls+=" rest";
       if(r.p) cls+=" "+r.p;
       if(d===t) cls+=" today";
       if(d===ds && d!==t) cls+=" sel";
@@ -389,7 +439,10 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
       html+='<button type="button" class="'+cls+'" data-d="'+d+'" aria-label="'+lab+'"'+(d>t?" disabled":"")+'>'+(glyph(r.p)||(i+1))+bleedDot(r)+'</button>';
     }
     el.innerHTML=html;
-    $("sheetStats").textContent="服用 "+taken+"/"+s.active+"・飲み忘れ "+missed+"・出血 "+bleed+"日";
+    $("sheetStats").textContent=(c.flex ? "服用 "+taken+"日" : "服用 "+taken+"/"+s.active)+"・飲み忘れ "+missed+"・出血 "+bleed+"日";
+    $("sheetNote").textContent = c.flex
+      ? FLEX.min+"日目までは出血があっても服用します。"+(FLEX.min+1)+"日目以降に出血が"+FLEX.bleed+"日続くか、連続"+FLEX.max+"日に達したら、"+FLEX.rest+"日間休薬します。休薬を始める日に「休薬」を押すと、4日後から次の周期を数え直します。"
+      : "丸をタップするとその日の記録を開きます。飲んだ錠剤はシートから抜けた表示になります。";
   }
 
   function renderMonth(){
