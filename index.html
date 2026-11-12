@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ピル手帳">
+<meta name="theme-color" content="#e9edf1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161b" media="(prefers-color-scheme: dark)">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>ピル手帳</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@500;700&display=swap">
+<style>
+/* Layout: one narrow column like a pocket notebook. Day card on top, the blister sheet under it, month below. */
+:root{
+  --bg:#e9edf1; --surface:#f8fafb; --ink:#19232c; --muted:#5a6875; --line:#cfd7de;
+  --accent:#23607d; --accent-ink:#ffffff; --pill:#9fc4d6;
+  --ok:#1c7d63; --warn:#b65c08; --rest:#6f66a8; --bleed:#c12d55;
+  --display:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#10161b; --surface:#19212a; --ink:#e4eaef; --muted:#93a1ad; --line:#2d3944;
+  --accent:#6fb4d3; --accent-ink:#0c1a22; --pill:#4f7f95;
+  --ok:#4fc3a1; --warn:#eb9a45; --rest:#a79fe0; --bleed:#f06a8c; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#10161b; --surface:#19212a; --ink:#e4eaef; --muted:#93a1ad; --line:#2d3944;
+  --accent:#6fb4d3; --accent-ink:#0c1a22; --pill:#4f7f95;
+  --ok:#4fc3a1; --warn:#eb9a45; --rest:#a79fe0; --bleed:#f06a8c; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;
+  padding-block:20px 48px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px))}
+.wrap{max-width:460px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:24px;font-weight:700;letter-spacing:.04em}
+h2{font-size:16px;font-weight:700}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#sync{font-size:12px;color:var(--muted)}
+#sync.bad{color:var(--warn);font-weight:700}
+main{display:flex;flex-direction:column;gap:20px;transition:opacity .2s}
+main[inert]{opacity:.55}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.sub{font-size:13px;color:var(--muted)}
+.label{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.08em}
+
+/* day card */
+#dayDate{font-family:var(--display);font-size:20px;font-weight:700}
+#dayStatus{font-weight:500}
+#dayStatus.warn{color:var(--warn);font-weight:700}
+.link{background:none;border:0;padding:4px 0;color:var(--accent);font-weight:700;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg button{min-height:52px;border-radius:12px;border:1.5px solid var(--line);background:transparent;font-weight:700;font-size:15px;padding:6px 4px}
+.seg button[data-p="t"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.seg button[data-p="m"][aria-pressed="true"]{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.seg button[data-p="b"][aria-pressed="true"]{background:var(--rest);border-color:var(--rest);color:var(--surface)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.chips button{min-height:40px;border-radius:999px;border:1.5px solid var(--line);background:transparent;font-size:14px;font-weight:500;padding:4px 2px}
+.chips button[aria-pressed="true"]{background:var(--bleed);border-color:var(--bleed);color:var(--surface);font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+input[type=text],input[type=time],input[type=date],input[type=number],select{
+  width:100%;min-height:42px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);padding:6px 10px}
+
+/* blister sheet */
+.sheet{background:var(--bg);border-radius:12px;padding:12px 10px;display:grid;grid-template-columns:repeat(7,1fr);gap:8px 4px;justify-items:center}
+.wd{font-size:11px;font-weight:700;color:var(--muted)}
+.slot{position:relative;width:36px;height:36px;max-width:100%;border-radius:50%;border:2px solid transparent;background:var(--pill);
+  color:var(--ink);font-size:11px;font-weight:700;padding:0;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.slot.rest{background:transparent;border:2px dotted var(--muted);color:var(--muted)}
+.slot.t{background:transparent;border:2px dashed var(--ok);color:var(--ok);font-size:15px}
+.slot.m{border-color:var(--warn);color:var(--warn);background:transparent;font-size:15px}
+.slot.b{background:transparent;border:2px solid var(--rest);color:var(--rest);font-size:13px}
+.slot.today{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--accent)}
+.slot.sel{box-shadow:0 0 0 3px var(--surface),0 0 0 5px var(--ink)}
+.slot:disabled{opacity:.45;cursor:default}
+.slot i,.cell i{position:absolute;border-radius:50%;background:var(--bleed)}
+.slot i{top:-3px;right:-3px;border:2px solid var(--bg)}
+.b1{width:9px;height:9px}.b2{width:12px;height:12px}.b3{width:15px;height:15px}
+
+/* month */
+.month{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.month .wd{text-align:center}
+.cell{position:relative;aspect-ratio:1;border-radius:10px;border:1.5px solid transparent;background:var(--bg);padding:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-variant-numeric:tabular-nums;line-height:1.15}
+.cell b{font-weight:500;font-size:13px}
+.cell span{font-size:13px;font-weight:700;height:16px}
+.cell .t{color:var(--ok)}.cell .m{color:var(--warn)}.cell .b{color:var(--rest)}
+.cell.today{border-color:var(--accent)}
+.cell.sel{border-color:var(--ink)}
+.cell:disabled{opacity:.4;cursor:default}
+.cell i{top:3px;right:3px}
+.cell .b1{width:6px;height:6px}.cell .b2{width:8px;height:8px}.cell .b3{width:10px;height:10px}
+.nav{display:flex;align-items:center;gap:6px}
+.nav button{width:40px;height:40px;border-radius:10px;border:1.5px solid var(--line);background:transparent;font-size:16px}
+#monthTitle{font-family:var(--display);font-weight:700;font-size:16px;min-width:6.5em;text-align:center;font-variant-numeric:tabular-nums}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted)}
+.legend b{font-weight:700}
+.legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bleed);margin-right:4px}
+
+/* settings */
+details.card{gap:0}
+summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer}
+.set{display:flex;flex-direction:column;gap:14px;padding-top:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 16px;border-radius:12px;border:1.5px solid var(--accent);
+  background:var(--accent);color:var(--accent-ink);font-weight:700;text-decoration:none;text-align:center}
+.btn.ghost{background:transparent;color:var(--accent)}
+.how{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.how ol{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:4px}
+.note{font-size:12px;color:var(--muted);margin:0}
+@media (prefers-reduced-motion: reduce){main{transition:none}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>ピル手帳</h1>
+    <span id="sync" role="status">読み込み中…</span>
+  </header>
+
+  <main id="main" inert>
+    <section class="card" aria-labelledby="dayDate">
+      <div class="row">
+        <div>
+          <div id="dayDate">—</div>
+          <div class="sub" id="dayCycle"></div>
+        </div>
+        <button class="link" id="toToday" type="button" hidden>今日に戻る</button>
+      </div>
+      <div id="dayStatus"></div>
+      <div class="seg" id="pillBtns" role="group" aria-label="服用の記録">
+        <button type="button" data-p="t" aria-pressed="false">飲んだ</button>
+        <button type="button" data-p="m" aria-pressed="false">飲まなかった</button>
+        <button type="button" data-p="b" aria-pressed="false">休薬</button>
+      </div>
+      <div class="field">
+        <span class="label">出血</span>
+        <div class="chips" id="bleedBtns" role="group" aria-label="出血の記録">
+          <button type="button" data-bl="0" aria-pressed="false">なし</button>
+          <button type="button" data-bl="1" aria-pressed="false">少量</button>
+          <button type="button" data-bl="2" aria-pressed="false">ふつう</button>
+          <button type="button" data-bl="3" aria-pressed="false">多い</button>
+        </div>
+      </div>
+      <label class="field"><span class="label">メモ</span>
+        <input type="text" id="memo" maxlength="200" placeholder="体調や気づいたこと" autocomplete="off">
+      </label>
+    </section>
+
+    <section class="card" aria-labelledby="sheetH">
+      <div class="row"><h2 id="sheetH">シート</h2><span class="sub" id="sheetStats"></span></div>
+      <div class="sheet" id="sheet"></div>
+      <p class="note">丸をタップするとその日の記録を開きます。飲んだ錠剤はシートから抜けた表示になります。</p>
+    </section>
+
+    <section class="card" aria-labelledby="monthTitle">
+      <div class="row">
+        <h2>カレンダー</h2>
+        <div class="nav">
+          <button type="button" id="prevM" aria-label="前の月">‹</button>
+          <span id="monthTitle"></span>
+          <button type="button" id="nextM" aria-label="次の月">›</button>
+        </div>
+      </div>
+      <div class="month" id="month"></div>
+      <div class="legend">
+        <span><b style="color:var(--ok)">✓</b> 飲んだ</span>
+        <span><b style="color:var(--warn)">×</b> 飲まなかった</span>
+        <span><b style="color:var(--rest)">休</b> 休薬</span>
+        <span><span class="dot"></span>出血（大きいほど多い）</span>
+      </div>
+    </section>
+
+    <details class="card" id="settings">
+      <summary>設定と通知</summary>
+      <div class="set">
+        <label class="field"><span class="label">飲む時刻</span><input type="time" id="sTime"></label>
+        <label class="field"><span class="label">ピルの種類</span>
+          <select id="sPreset">
+            <option value="21-7">21錠 ＋ 7日休薬</option>
+            <option value="21-7p">28錠（実薬21 ＋ 偽薬7）</option>
+            <option value="24-4">28錠（実薬24 ＋ 偽薬4）</option>
+            <option value="custom">日数を自分で決める</option>
+          </select>
+        </label>
+        <div class="two" id="customRow" hidden>
+          <label class="field"><span class="label">実薬の日数</span><input type="number" id="sActive" min="1" max="365" inputmode="numeric"></label>
+          <label class="field"><span class="label">休薬の日数</span><input type="number" id="sRest" min="0" max="14" inputmode="numeric"></label>
+        </div>
+        <label class="field"><span class="label">いまのシートを始めた日</span><input type="date" id="sStart"></label>
+        <button type="button" class="btn ghost" id="newSheet">今日から新しいシートを始める</button>
+
+        <div class="how">
+          <h2>バックアップ</h2>
+          <p class="note">記録はこの端末のブラウザにだけ保存されています。ファイルに書き出しておくと、機種変更のあとに戻せます。</p>
+          <button type="button" class="btn ghost" id="exportBtn">バックアップを保存</button>
+          <label class="btn ghost" for="importFile">バックアップから復元</label>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+          <p class="note" id="backupMsg" role="status"></p>
+        </div>
+        <div class="how">
+          <h2>通知を受け取る</h2>
+          <p class="note">このページは閉じている間は通知を出せません。スマホのリマインダーかカレンダーに毎日の予定を1回登録すると、<span id="timeEcho"></span> に通知が届きます。</p>
+          <span class="label">iPhoneの「リマインダー」で登録</span>
+          <ol>
+            <li>リマインダーアプリで「ピルを飲む」を新規作成</li>
+            <li>「詳細」で時刻を <b id="timeEcho2"></b>、繰り返しを「毎日」に</li>
+            <li id="urlStep">URL欄にこのページのリンクを貼ると、通知から記録画面を開けます</li>
+          </ol>
+          <button type="button" class="btn ghost" id="copyUrl">このページのリンクをコピー</button>
+          <input type="text" id="urlBox" readonly hidden aria-label="このページのリンク">
+          <span class="label">Googleカレンダーで登録</span>
+          <a class="btn" id="gcal" href="#" target="_blank" rel="noopener">毎日の予定をGoogleカレンダーに追加</a>
+          <p class="note">追加画面で通知を「予定の開始時刻」に変えて保存してください。飲む時刻を変えたら、登録した予定も直してください。</p>
+        </div>
+      </div>
+    </details>
+
+    <p class="note">飲み忘れたときの対応は薬の種類で異なります。添付文書を確認するか、処方医・薬剤師に相談してください。記録はこの端末のブラウザだけに保存されます。機種変更やブラウザのデータ削除で消えるので、ときどきバックアップを保存してください。</p>
+  </main>
+</div>
+
+<script>
+(function(){
+  var APP_URL = location.href.split("#")[0];
+  var LS_KEY = "pilltecho.v1";
+  var WD = ["日","月","火","水","木","金","土"];
+  var $ = function(id){ return document.getElementById(id); };
+
+  // ---------- dates ----------
+  function pad(n){ return (n<10?"0":"")+n; }
+  function ymd(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+  function parse(s){ var p=s.split("-"); return new Date(+p[0], +p[1]-1, +p[2]); }
+  function addDays(s,n){ var d=parse(s); d.setDate(d.getDate()+n); return ymd(d); }
+  function diff(a,b){ var x=parse(a), y=parse(b); return Math.round((Date.UTC(y.getFullYear(),y.getMonth(),y.getDate())-Date.UTC(x.getFullYear(),x.getMonth(),x.getDate()))/86400000); }
+  function today(){ return ymd(new Date()); }
+  function nowHM(){ var d=new Date(); return pad(d.getHours())+":"+pad(d.getMinutes()); }
+  function jp(s){ var d=parse(s); return (d.getMonth()+1)+"月"+d.getDate()+"日（"+WD[d.getDay()]+"）"; }
+
+  // ---------- state ----------
+  var state = { settings:{ time:"21:00", start:today(), active:21, rest:7, preset:"21-7" }, months:{} };
+  var hasSettings = false, ready = false, mode = "loading";
+  var sel = null;                       // null = follow today
+  var viewYM = today().slice(0,7);
+  var colRef = null;
+  var queue = {};
+
+  function cur(){ return sel || today(); }
+  function getRec(ds){ var m=state.months[ds.slice(0,7)]; return (m && m[String(+ds.slice(8))]) || {}; }
+  function setRec(ds, patch){
+    var ym=ds.slice(0,7), k=String(+ds.slice(8));
+    var m=state.months[ym] || (state.months[ym]={});
+    var r=Object.assign({}, m[k]||{}, patch);
+    Object.keys(r).forEach(function(key){ if(r[key]===undefined || r[key]===null || r[key]==="") delete r[key]; });
+    if(Object.keys(r).length) m[k]=r; else delete m[k];
+    persist("m-"+ym);
+    renderAll();
+  }
+  function cyc(ds){
+    var s=state.settings, n=diff(s.start, ds);
+    if(n<0) return null;
+    var L=s.active+s.rest, i=n%L;
+    return { i:i, rest:i>=s.active, first:addDays(ds,-i) };
+  }
+
+  // ---------- storage ----------
+  function bodyOf(key){
+    if(key==="settings") return JSON.parse(JSON.stringify(state.settings));
+    return { days: JSON.parse(JSON.stringify(state.months[key.slice(2)]||{})) };
+  }
+  function setSync(text,bad){ var el=$("sync"); el.textContent=text; el.className=bad?"bad":""; }
+  function persist(key){
+    if(mode==="local"){
+      try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); setSync("この端末に保存しました"); }
+      catch(e){ setSync("保存できませんでした",true); }
+      return;
+    }
+    if(mode!=="db") return;
+    var q=queue[key] || (queue[key]={busy:false,dirty:false});
+    q.dirty=true;
+    if(!q.busy) pump(key,q);
+  }
+  async function pump(key,q){
+    q.busy=true; setSync("保存中…");
+    var ok=true;
+    while(q.dirty){
+      q.dirty=false;
+      try{ await colRef.doc(key).set(bodyOf(key)); }
+      catch(e){
+        try{ await new Promise(function(r){ setTimeout(r, 800+Math.random()*800); }); await colRef.doc(key).set(bodyOf(key)); }
+        catch(e2){ ok=false; break; }
+      }
+    }
+    q.busy=false;
+    setSync(ok ? "保存しました" : "保存できませんでした。通信を確認してもう一度記録してください", !ok);
+  }
+  function pending(key){ var q=queue[key]; return !!(q && (q.busy||q.dirty)); }
+
+  function goLocal(msg){
+    mode="local";
+    try{
+      var raw=localStorage.getItem(LS_KEY);
+      if(raw){ var o=JSON.parse(raw); if(o && o.settings){ state.settings=Object.assign(state.settings,o.settings); state.months=o.months||{}; hasSettings=true; } }
+    }catch(e){}
+    ready=true; setSync(msg||"この端末に保存", !!msg); afterLoad();
+  }
+
+  async function boot(){
+    var db=null, user=null, uid=null;
+    try{
+      if(window.claude && window.claude.use){
+        var r=await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+        db=r[0]; user=r[1];
+        if(user) uid=await user.id();
+      }
+    }catch(e){}
+    if(!db || !uid){ goLocal(""); return; }
+    mode="db";
+    colRef=db.collection("data/users/"+uid);
+    var timer=setTimeout(function(){ if(!ready) setSync("データに接続できません。通信を確認してください", true); }, 10000);
+    colRef.onSnapshot(function(snap){
+      snap.docs.forEach(function(d){
+        if(pending(d.id)) return;
+        var b=d.data()||{};
+        if(d.id==="settings"){ state.settings=Object.assign({}, state.settings, JSON.parse(JSON.stringify(b))); hasSettings=true; }
+        else if(d.id.indexOf("m-")===0){ state.months[d.id.slice(2)]=JSON.parse(JSON.stringify(b.days||{})); }
+      });
+      if(!snap.metadata.fromCache){
+        clearTimeout(timer);
+        if(!ready){ ready=true; setSync("同期済み"); afterLoad(); return; }
+      }
+      renderAll(); fillSettings();
+    }, function(){
+      clearTimeout(timer);
+      if(!ready) goLocal("同期できないため、この端末のブラウザだけに保存されます");
+      else setSync("同期が切れました。ページを開き直してください", true);
+    });
+  }
+  function afterLoad(){
+    $("main").inert=false;
+    if(!hasSettings) $("settings").open=true;
+    fillSettings(); renderAll();
+  }
+
+  // ---------- render ----------
+  function renderAll(){ renderDay(); renderSheet(); renderMonth(); }
+
+  function renderDay(){
+    var ds=cur(), t=today(), r=getRec(ds), c=cyc(ds), s=state.settings;
+    $("dayDate").textContent=(ds===t?"今日 ":"")+jp(ds);
+    $("toToday").hidden=(ds===t);
+    $("dayCycle").textContent = !c ? "シート開始日より前" : c.rest ? "休薬 "+(c.i-s.active+1)+"日目 / "+s.rest+"日" : "シート "+(c.i+1)+"日目 / 実薬"+s.active+"錠";
+    var st=$("dayStatus"), warn=false, msg;
+    if(r.p==="t") msg="飲みました"+(r.at?"（"+r.at+"）":"");
+    else if(r.p==="m") msg="飲みませんでした";
+    else if(r.p==="b") msg="休薬日として記録しました";
+    else if(ds!==t) msg="記録がありません";
+    else if(c && c.rest) msg="休薬期間です";
+    else if(nowHM()>=s.time){ msg=s.time+" を過ぎています。まだ記録がありません"; warn=true; }
+    else msg=s.time+" に服用予定";
+    st.textContent=msg; st.className=warn?"warn":"";
+    Array.prototype.forEach.call($("pillBtns").children, function(b){ b.setAttribute("aria-pressed", String(b.dataset.p===r.p)); });
+    Array.prototype.forEach.call($("bleedBtns").children, function(b){ b.setAttribute("aria-pressed", String(r.bl!==undefined && +b.dataset.bl===r.bl)); });
+    var memo=$("memo");
+    if(document.activeElement!==memo) memo.value=r.memo||"";
+  }
+
+  function glyph(p){ return p==="t"?"✓":p==="m"?"×":p==="b"?"休":""; }
+  function bleedDot(r){ return r.bl>0 ? '<i class="b'+r.bl+'"></i>' : ""; }
+
+  function renderSheet(){
+    var s=state.settings, t=today(), ds=cur(), c=cyc(ds) || cyc(t), el=$("sheet");
+    if(!c){ el.innerHTML='<span class="sub" style="grid-column:1/-1">シート開始日がまだ先です。設定で開始日を確認してください。</span>'; $("sheetStats").textContent=""; return; }
+    var L=s.active+s.rest, html="", taken=0, missed=0, bleed=0, startWd=parse(c.first).getDay();
+    for(var w=0;w<7;w++) html+='<span class="wd">'+WD[(startWd+w)%7]+'</span>';
+    for(var i=0;i<L;i++){
+      var d=addDays(c.first,i), r=getRec(d), cls="slot";
+      if(i>=s.active) cls+=" rest";
+      if(r.p) cls+=" "+r.p;
+      if(d===t) cls+=" today";
+      if(d===ds && d!==t) cls+=" sel";
+      if(r.p==="t") taken++; if(r.p==="m") missed++; if(r.bl>0) bleed++;
+      var lab=jp(d)+" "+(r.p==="t"?"飲んだ":r.p==="m"?"飲まなかった":r.p==="b"?"休薬":"未記録");
+      html+='<button type="button" class="'+cls+'" data-d="'+d+'" aria-label="'+lab+'"'+(d>t?" disabled":"")+'>'+(glyph(r.p)||(i+1))+bleedDot(r)+'</button>';
+    }
+    el.innerHTML=html;
+    $("sheetStats").textContent="服用 "+taken+"/"+s.active+"・飲み忘れ "+missed+"・出血 "+bleed+"日";
+  }
+
+  function renderMonth(){
+    var p=viewYM.split("-"), y=+p[0], m=+p[1], t=today(), ds=cur();
+    $("monthTitle").textContent=y+"年"+m+"月";
+    var first=new Date(y,m-1,1).getDay(), n=new Date(y,m,0).getDate(), html="";
+    for(var w=0;w<7;w++) html+='<span class="wd">'+WD[w]+'</span>';
+    for(var k=0;k<first;k++) html+="<span></span>";
+    for(var d=1;d<=n;d++){
+      var s=viewYM+"-"+pad(d), r=getRec(s), cls="cell";
+      if(s===t) cls+=" today"; if(s===ds && s!==t) cls+=" sel";
+      html+='<button type="button" class="'+cls+'" data-d="'+s+'" aria-label="'+jp(s)+'"'+(s>t?" disabled":"")+'><b>'+d+'</b><span class="'+(r.p||"")+'">'+glyph(r.p)+'</span>'+bleedDot(r)+'</button>';
+    }
+    $("month").innerHTML=html;
+    $("nextM").disabled = viewYM>=t.slice(0,7);
+  }
+
+  function fillSettings(){
+    var s=state.settings, a=document.activeElement;
+    if(a!==$("sTime")) $("sTime").value=s.time;
+    if(a!==$("sStart")) $("sStart").value=s.start;
+    $("sStart").max=today();
+    $("sPreset").value=s.preset;
+    $("customRow").hidden = s.preset!=="custom";
+    if(a!==$("sActive")) $("sActive").value=s.active;
+    if(a!==$("sRest")) $("sRest").value=s.rest;
+    $("timeEcho").textContent="毎日 "+s.time; $("timeEcho2").textContent=s.time;
+    var hm=s.time.replace(":",""), d=today().replace(/-/g,""), end=new Date(parse(today()).getTime());
+    end.setHours(+s.time.slice(0,2), +s.time.slice(3)+10);
+    var endS=ymd(end).replace(/-/g,"")+"T"+pad(end.getHours())+pad(end.getMinutes())+"00";
+    var tz=""; try{ tz=Intl.DateTimeFormat().resolvedOptions().timeZone||""; }catch(e){}
+    $("gcal").href="https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent("ピルを飲む")+
+      "&dates="+d+"T"+hm+"00/"+endS+"&recur="+encodeURIComponent("RRULE:FREQ=DAILY")+
+      (tz?"&ctz="+encodeURIComponent(tz):"")+"&details="+encodeURIComponent(APP_URL?"記録する: "+APP_URL:"ピル手帳で記録する");
+    $("copyUrl").hidden=!APP_URL; $("urlStep").hidden=!APP_URL;
+  }
+  function saveSettings(){ hasSettings=true; persist("settings"); fillSettings(); renderAll(); }
+
+  // ---------- events ----------
+  function pick(ds){ if(ds>today()) return; sel=(ds===today())?null:ds; viewYM=ds.slice(0,7); renderAll(); }
+  $("pillBtns").addEventListener("click", function(e){
+    var b=e.target.closest("button"); if(!b||!ready) return;
+    var ds=cur(), r=getRec(ds), p=b.dataset.p;
+    if(r.p===p) setRec(ds,{p:undefined, at:undefined});
+    else setRec(ds,{p:p, at:(p==="t" && ds===today())?nowHM():undefined});
+  });
+  $("bleedBtns").addEventListener("click", function(e){
+    var b=e.target.closest("button"); if(!b||!ready) return;
+    var ds=cur(), r=getRec(ds), v=+b.dataset.bl;
+    setRec(ds,{bl:(r.bl===v)?undefined:v});
+  });
+  $("memo").addEventListener("change", function(){ if(ready) setRec(cur(),{memo:this.value.trim()}); });
+  $("toToday").addEventListener("click", function(){ pick(today()); });
+  function gridClick(e){ var b=e.target.closest("button[data-d]"); if(!b) return; pick(b.dataset.d); window.scrollTo({top:0,behavior:"smooth"}); }
+  $("sheet").addEventListener("click", gridClick);
+  $("month").addEventListener("click", gridClick);
+  function shiftM(n){ var p=viewYM.split("-"), d=new Date(+p[0], +p[1]-1+n, 1); viewYM=d.getFullYear()+"-"+pad(d.getMonth()+1); renderMonth(); }
+  $("prevM").addEventListener("click", function(){ shiftM(-1); });
+  $("nextM").addEventListener("click", function(){ shiftM(1); });
+
+  $("sTime").addEventListener("change", function(){ if(/^\d\d:\d\d$/.test(this.value)){ state.settings.time=this.value; saveSettings(); } });
+  $("sStart").addEventListener("change", function(){ if(/^\d{4}-\d\d-\d\d$/.test(this.value) && this.value<=today()){ state.settings.start=this.value; saveSettings(); } });
+  $("sPreset").addEventListener("change", function(){
+    var v=this.value, s=state.settings; s.preset=v;
+    if(v==="21-7"||v==="21-7p"){ s.active=21; s.rest=7; } else if(v==="24-4"){ s.active=24; s.rest=4; }
+    saveSettings();
+  });
+  function num(el,lo,hi,fallback){ var n=Math.round(+el.value); return (isFinite(n)&&n>=lo&&n<=hi)?n:fallback; }
+  $("sActive").addEventListener("change", function(){ state.settings.active=num(this,1,365,state.settings.active); saveSettings(); });
+  $("sRest").addEventListener("change", function(){ state.settings.rest=num(this,0,14,state.settings.rest); saveSettings(); });
+  $("newSheet").addEventListener("click", function(){ state.settings.start=today(); sel=null; saveSettings(); });
+  $("copyUrl").addEventListener("click", function(){
+    var btn=this, box=$("urlBox");
+    function fallback(){ box.hidden=false; box.value=APP_URL; box.focus(); box.select(); }
+    try{ navigator.clipboard.writeText(APP_URL).then(function(){ btn.textContent="コピーしました"; }, fallback); }catch(e){ fallback(); }
+  });
+
+  $("exportBtn").addEventListener("click", function(){
+    var a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,1)],{type:"application/json"}));
+    a.download="pill-techo-"+today()+".json"; document.body.appendChild(a); a.click(); a.remove();
+    $("backupMsg").textContent="バックアップを書き出しました";
+  });
+  $("importFile").addEventListener("change", function(){
+    var f=this.files[0], input=this; if(!f) return;
+    var fr=new FileReader();
+    fr.onload=function(){
+      try{
+        var o=JSON.parse(fr.result);
+        if(!o || typeof o.settings!=="object" || typeof o.months!=="object") throw 0;
+        state.settings=Object.assign(state.settings,o.settings); state.months=o.months; hasSettings=true;
+        persist("settings"); fillSettings(); renderAll();
+        $("backupMsg").textContent="復元しました";
+      }catch(e){ $("backupMsg").textContent="このファイルは読み込めませんでした"; }
+      input.value="";
+    };
+    fr.readAsText(f);
+  });
+
+  setInterval(function(){ if(ready) renderAll(); }, 60000);
+  document.addEventListener("visibilitychange", function(){ if(ready && !document.hidden) renderAll(); });
+
+  fillSettings(); renderAll();
+  boot();
+})();
+</script>
+</body>
+</html>
