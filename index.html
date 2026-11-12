@@ -220,6 +220,15 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
         </div>
         <label class="field"><span class="label">いまの周期（シート）を飲み始めた日</span><input type="date" id="sStart"></label>
         <button type="button" class="btn ghost" id="newSheet">今日を1日目にして数え直す</button>
+        <button type="button" class="btn ghost" id="bulkBtn">飲み始めた日から今日までをまとめて記録</button>
+        <div id="bulkBox" class="field" hidden>
+          <p class="note" id="bulkText"></p>
+          <div class="two">
+            <button type="button" class="btn" id="bulkOk">記録する</button>
+            <button type="button" class="btn ghost" id="bulkNo">やめる</button>
+          </div>
+        </div>
+        <p class="note" id="bulkMsg" role="status"></p>
 
         <div class="how">
           <h2>バックアップ</h2>
@@ -557,6 +566,30 @@ summary{font-family:var(--display);font-weight:700;font-size:16px;cursor:pointer
   $("sActive").addEventListener("change", function(){ state.settings.active=num(this,1,365,state.settings.active); saveSettings(); });
   $("sRest").addEventListener("change", function(){ state.settings.rest=num(this,0,14,state.settings.rest); saveSettings(); });
   $("newSheet").addEventListener("click", function(){ state.settings.start=today(); sel=null; saveSettings(); });
+  function bulkDays(){ var n=diff(state.settings.start, today())+1; return (n>=1 && n<=400) ? n : 0; }
+  $("bulkBtn").addEventListener("click", function(){
+    if(!ready) return;
+    var n=bulkDays();
+    $("bulkMsg").textContent = n ? "" : "「飲み始めた日」を今日以前（400日以内）の日付にしてください。";
+    $("bulkBox").hidden=!n;
+    if(n) $("bulkText").textContent=jp(state.settings.start)+" から今日までの"+n+"日分を「飲んだ・出血なし」で記録します。すでに記録してある項目は変更しません。";
+  });
+  $("bulkNo").addEventListener("click", function(){ $("bulkBox").hidden=true; });
+  $("bulkOk").addEventListener("click", function(){
+    var n=bulkDays(), touched={}, count=0;
+    for(var i=0;i<n;i++){
+      var d=addDays(state.settings.start,i), ym=d.slice(0,7), k=String(+d.slice(8));
+      var m=state.months[ym] || (state.months[ym]={}), r=Object.assign({}, m[k]||{}), ch=false;
+      if(!r.p){ r.p="t"; ch=true; }
+      if(r.bl===undefined){ r.bl=0; ch=true; }
+      if(ch){ m[k]=r; touched[ym]=1; count++; }
+    }
+    if(!hasSettings){ hasSettings=true; persist("settings"); }
+    Object.keys(touched).forEach(function(ym){ persist("m-"+ym); });
+    $("bulkBox").hidden=true;
+    $("bulkMsg").textContent = count ? count+"日分を記録しました。" : "記録する日はありませんでした。";
+    renderAll();
+  });
   $("copyUrl").addEventListener("click", function(){
     var btn=this, box=$("urlBox");
     function fallback(){ box.hidden=false; box.value=APP_URL; box.focus(); box.select(); }
